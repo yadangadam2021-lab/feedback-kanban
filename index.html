@@ -1,0 +1,939 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>客诉反馈看板</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --bg:#0f1117;--surface:#1a1d27;--surface2:#232733;--border:#2e3345;
+  --text:#e4e6ef;--text2:#8b8fa3;--accent:#6366f1;--accent2:#818cf8;
+  --green:#22c55e;--yellow:#eab308;--red:#ef4444;--blue:#3b82f6;
+  --orange:#f97316;--purple:#a855f7;--cyan:#06b6d4;
+  --radius:10px;--shadow:0 2px 12px rgba(0,0,0,.3);
+}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;overflow-x:hidden}
+/* Header */
+.header{background:linear-gradient(135deg,#1e1b4b 0%,#312e81 50%,#1e1b4b 100%);padding:20px 32px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid rgba(99,102,241,.3);position:sticky;top:0;z-index:100;backdrop-filter:blur(10px)}
+.header h1{font-size:22px;font-weight:700;display:flex;align-items:center;gap:10px;background:linear-gradient(135deg,#c7d2fe,#e0e7ff);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.header-stats{display:flex;gap:24px}
+.stat-badge{display:flex;align-items:center;gap:6px;font-size:13px;color:#a5b4fc}
+.stat-badge .num{font-size:20px;font-weight:700;color:#e0e7ff}
+/* Nav Tabs */
+.nav{display:flex;gap:4px;padding:16px 32px 0;background:var(--bg)}
+.nav-btn{padding:10px 20px;border:none;background:transparent;color:var(--text2);font-size:14px;cursor:pointer;border-radius:var(--radius) var(--radius) 0 0;transition:.2s;border-bottom:2px solid transparent}
+.nav-btn:hover{color:var(--text);background:var(--surface)}
+.nav-btn.active{color:var(--accent2);background:var(--surface);border-bottom-color:var(--accent)}
+/* Main */
+.main{padding:20px 32px 40px}
+.tab-panel{display:none}
+.tab-panel.active{display:block}
+/* Kanban */
+.kanban{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;min-height:500px}
+.kanban-col{background:var(--surface);border-radius:var(--radius);padding:16px;display:flex;flex-direction:column;max-height:calc(100vh - 180px)}
+.kanban-col-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;padding-bottom:12px;border-bottom:1px solid var(--border)}
+.kanban-col-title{font-size:14px;font-weight:600;display:flex;align-items:center;gap:8px}
+.kanban-col-count{background:var(--surface2);color:var(--text2);font-size:12px;padding:2px 8px;border-radius:99px}
+.kanban-cards{flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:10px;padding-right:4px}
+.kanban-cards::-webkit-scrollbar{width:4px}
+.kanban-cards::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
+.col-new .kanban-col-title::before{content:'';width:8px;height:8px;border-radius:50%;background:var(--blue);display:inline-block}
+.col-progress .kanban-col-title::before{content:'';width:8px;height:8px;border-radius:50%;background:var(--orange);display:inline-block}
+.col-resolved .kanban-col-title::before{content:'';width:8px;height:8px;border-radius:50%;background:var(--green);display:inline-block}
+.col-closed .kanban-col-title::before{content:'';width:8px;height:8px;border-radius:50%;background:var(--text2);display:inline-block}
+/* Card */
+.card{background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:14px;cursor:pointer;transition:.2s}
+.card:hover{border-color:var(--accent);transform:translateY(-1px);box-shadow:var(--shadow)}
+.card-id{font-size:11px;color:var(--text2);margin-bottom:6px}
+.card-title{font-size:13px;font-weight:500;margin-bottom:8px;line-height:1.5;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.card-meta{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.tag{font-size:11px;padding:2px 8px;border-radius:99px;font-weight:500}
+.tag-bug{background:rgba(239,68,68,.15);color:#fca5a5}
+.tag-ux{background:rgba(234,179,8,.15);color:#fde047}
+.tag-feature{background:rgba(99,102,241,.15);color:#a5b4fc}
+.tag-other{background:rgba(139,143,163,.15);color:#8b8fa3}
+.tag-p0{background:rgba(239,68,68,.2);color:#fca5a5}
+.tag-p1{background:rgba(249,115,22,.2);color:#fdba74}
+.tag-p2{background:rgba(234,179,8,.2);color:#fde047}
+.tag-p3{background:rgba(34,197,94,.2);color:#86efac}
+.card-date{font-size:11px;color:var(--text2);margin-left:auto}
+/* Add Button */
+.add-btn{width:100%;padding:12px;border:2px dashed var(--border);border-radius:8px;background:transparent;color:var(--text2);font-size:13px;cursor:pointer;transition:.2s;display:flex;align-items:center;justify-content:center;gap:6px;margin-top:10px}
+.add-btn:hover{border-color:var(--accent);color:var(--accent);background:rgba(99,102,241,.05)}
+/* Modal */
+.modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:200;align-items:center;justify-content:center;backdrop-filter:blur(4px)}
+.modal-overlay.show{display:flex}
+.modal{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:28px;width:560px;max-width:90vw;max-height:85vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.5)}
+.modal h2{font-size:18px;margin-bottom:20px;display:flex;align-items:center;gap:10px}
+.form-group{margin-bottom:16px}
+.form-group label{display:block;font-size:13px;color:var(--text2);margin-bottom:6px;font-weight:500}
+.form-group input,.form-group select,.form-group textarea{width:100%;padding:10px 14px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:14px;font-family:inherit;transition:.2s}
+.form-group input:focus,.form-group select:focus,.form-group textarea:focus{outline:none;border-color:var(--accent)}
+.form-group textarea{resize:vertical;min-height:100px}
+.form-row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.btn{padding:10px 20px;border:none;border-radius:8px;font-size:14px;cursor:pointer;font-weight:500;transition:.2s;font-family:inherit}
+.btn-primary{background:var(--accent);color:#fff}
+.btn-primary:hover{background:var(--accent2)}
+.btn-ghost{background:transparent;color:var(--text2);border:1px solid var(--border)}
+.btn-ghost:hover{border-color:var(--text2);color:var(--text)}
+.btn-danger{background:rgba(239,68,68,.1);color:#fca5a5;border:1px solid rgba(239,68,68,.3)}
+.btn-danger:hover{background:rgba(239,68,68,.2)}
+.modal-actions{display:flex;gap:10px;justify-content:flex-end;margin-top:20px}
+/* Report Panel */
+.report-panel{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:24px}
+.report-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:20px}
+.report-card h3{font-size:15px;margin-bottom:16px;display:flex;align-items:center;gap:8px}
+.chart-container{position:relative;height:260px}
+.report-gen{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:20px;margin-bottom:20px}
+.report-gen h3{font-size:15px;margin-bottom:16px}
+.report-output{background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:20px;min-height:200px;white-space:pre-wrap;font-size:13px;line-height:1.8;color:var(--text)}
+.report-actions{display:flex;gap:10px;margin-top:16px}
+/* Upload */
+.upload-panel{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:24px;margin-bottom:20px}
+.upload-zone{border:2px dashed var(--border);border-radius:12px;padding:40px;text-align:center;transition:.2s;cursor:pointer}
+.upload-zone:hover{border-color:var(--accent);background:rgba(99,102,241,.03)}
+.upload-zone p{color:var(--text2);font-size:14px;margin-top:8px}
+.upload-zone .icon{font-size:36px;color:var(--accent)}
+.upload-preview{margin-top:16px;background:var(--surface2);border-radius:8px;padding:16px;font-size:13px;max-height:300px;overflow-y:auto;display:none}
+/* Detail Modal */
+.detail-status{display:flex;gap:8px;margin-top:12px}
+.status-btn{padding:4px 12px;border-radius:99px;border:1px solid var(--border);background:transparent;color:var(--text2);font-size:12px;cursor:pointer;transition:.2s}
+.status-btn:hover{border-color:var(--accent);color:var(--accent)}
+.status-btn.active{background:var(--accent);color:#fff;border-color:var(--accent)}
+.detail-info{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:16px;padding:16px;background:var(--surface2);border-radius:8px}
+.detail-info-item{font-size:13px}
+.detail-info-item span{color:var(--text2);display:block;font-size:11px;margin-bottom:2px}
+/* Search & Filter */
+.toolbar{display:flex;gap:12px;margin-bottom:16px;align-items:center}
+.search-box{flex:1;position:relative}
+.search-box input{width:100%;padding:10px 14px 10px 36px;background:var(--surface);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px}
+.search-box input:focus{outline:none;border-color:var(--accent)}
+.search-box::before{content:'🔍';position:absolute;left:12px;top:50%;transform:translateY(-50%);font-size:13px}
+.filter-select{padding:10px 14px;background:var(--surface);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px}
+/* Responsive */
+@media(max-width:1024px){.kanban{grid-template-columns:repeat(2,1fr)}.report-panel{grid-template-columns:1fr}}
+@media(max-width:640px){.kanban{grid-template-columns:1fr}.header{flex-direction:column;gap:12px}.header-stats{flex-wrap:wrap}.report-panel{grid-template-columns:1fr}}
+/* Animations */
+@keyframes slideIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+.card{animation:slideIn .3s ease}
+/* Toast */
+.toast{position:fixed;bottom:24px;right:24px;background:var(--surface);border:1px solid var(--green);color:var(--green);padding:12px 20px;border-radius:8px;font-size:13px;z-index:300;animation:slideIn .3s ease;display:none}
+.toast.show{display:block}
+</style>
+</head>
+<body>
+
+<!-- Header -->
+<div class="header">
+  <h1>📋 客诉反馈看板</h1>
+  <div class="header-stats">
+    <div class="stat-badge"><span>今日新增</span><span class="num" id="statToday">0</span></div>
+    <div class="stat-badge"><span>处理中</span><span class="num" id="statProgress" style="color:#fdba74">0</span></div>
+    <div class="stat-badge"><span>已解决</span><span class="num" id="statResolved" style="color:#86efac">0</span></div>
+    <div class="stat-badge"><span>总计</span><span class="num" id="statTotal">0</span></div>
+  </div>
+</div>
+
+<!-- Nav -->
+<div class="nav">
+  <button class="nav-btn active" onclick="switchTab('kanban')">看板</button>
+  <button class="nav-btn" onclick="switchTab('report')">报表统计</button>
+  <button class="nav-btn" onclick="switchTab('import')">文档导入</button>
+</div>
+
+<!-- Main Content -->
+<div class="main">
+
+  <!-- ===== Kanban Tab ===== -->
+  <div class="tab-panel active" id="tab-kanban">
+    <div class="toolbar">
+      <div class="search-box"><input type="text" id="searchInput" placeholder="搜索反馈内容..." oninput="renderKanban()"></div>
+      <select class="filter-select" id="filterCategory" onchange="renderKanban()">
+        <option value="">全部分类</option>
+        <option value="bug">功能缺陷</option>
+        <option value="ux">体验问题</option>
+        <option value="feature">需求建议</option>
+        <option value="other">其他</option>
+      </select>
+      <select class="filter-select" id="filterPriority" onchange="renderKanban()">
+        <option value="">全部优先级</option>
+        <option value="P0">P0</option>
+        <option value="P1">P1</option>
+        <option value="P2">P2</option>
+        <option value="P3">P3</option>
+      </select>
+    </div>
+    <div class="kanban">
+      <div class="kanban-col col-new">
+        <div class="kanban-col-header">
+          <div class="kanban-col-title">新反馈</div>
+          <span class="kanban-col-count" id="count-new">0</span>
+        </div>
+        <div class="kanban-cards" id="col-new" ondrop="dropCard(event,'new')" ondragover="event.preventDefault()"></div>
+        <button class="add-btn" onclick="openAddModal()">+ 添加反馈</button>
+      </div>
+      <div class="kanban-col col-progress">
+        <div class="kanban-col-header">
+          <div class="kanban-col-title">处理中</div>
+          <span class="kanban-col-count" id="count-progress">0</span>
+        </div>
+        <div class="kanban-cards" id="col-progress" ondrop="dropCard(event,'progress')" ondragover="event.preventDefault()"></div>
+      </div>
+      <div class="kanban-col col-resolved">
+        <div class="kanban-col-header">
+          <div class="kanban-col-title">已解决</div>
+          <span class="kanban-col-count" id="count-resolved">0</span>
+        </div>
+        <div class="kanban-cards" id="col-resolved" ondrop="dropCard(event,'resolved')" ondragover="event.preventDefault()"></div>
+      </div>
+      <div class="kanban-col col-closed">
+        <div class="kanban-col-header">
+          <div class="kanban-col-title">已关闭</div>
+          <span class="kanban-col-count" id="count-closed">0</span>
+        </div>
+        <div class="kanban-cards" id="col-closed" ondrop="dropCard(event,'closed')" ondragover="event.preventDefault()"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== Report Tab ===== -->
+  <div class="tab-panel" id="tab-report">
+    <div class="report-panel">
+      <div class="report-card">
+        <h3>📊 问题分类分布</h3>
+        <div class="chart-container"><canvas id="chartCategory"></canvas></div>
+      </div>
+      <div class="report-card">
+        <h3>📈 每日趋势</h3>
+        <div class="chart-container"><canvas id="chartTrend"></canvas></div>
+      </div>
+      <div class="report-card">
+        <h3>🎯 优先级分布</h3>
+        <div class="chart-container"><canvas id="chartPriority"></canvas></div>
+      </div>
+      <div class="report-card">
+        <h3>🔄 状态流转</h3>
+        <div class="chart-container"><canvas id="chartStatus"></canvas></div>
+      </div>
+    </div>
+
+    <div class="report-gen">
+      <h3>📝 报告生成</h3>
+      <div style="display:flex;gap:12px;margin-bottom:12px;align-items:center">
+        <label style="font-size:13px;color:var(--text2)">报告类型：</label>
+        <select class="filter-select" id="reportType">
+          <option value="daily">日报</option>
+          <option value="weekly">周报</option>
+        </select>
+        <label style="font-size:13px;color:var(--text2)">日期：</label>
+        <input type="date" class="filter-select" id="reportDate" style="padding:10px 14px;background:var(--surface);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px">
+        <button class="btn btn-primary" onclick="generateReport()">生成报告</button>
+        <button class="btn btn-ghost" onclick="copyReport()">📋 复制</button>
+      </div>
+      <div class="report-output" id="reportOutput">点击「生成报告」按钮，系统将根据当前看板数据自动生成反馈分析报告。</div>
+    </div>
+  </div>
+
+  <!-- ===== Import Tab ===== -->
+  <div class="tab-panel" id="tab-import">
+    <div class="upload-panel">
+      <h3 style="margin-bottom:16px;font-size:16px">📁 导入反馈文档</h3>
+      <div class="upload-zone" id="uploadZone" onclick="document.getElementById('fileInput').click()" ondrop="handleDrop(event)" ondragover="event.preventDefault()">
+        <div class="icon">📎</div>
+        <p>拖拽文件到此处，或点击选择文件</p>
+        <p style="font-size:12px;margin-top:4px">支持 .txt、.csv、.json 格式</p>
+      </div>
+      <input type="file" id="fileInput" accept=".txt,.csv,.json" style="display:none" onchange="handleFileSelect(event)">
+      <div class="upload-preview" id="uploadPreview"></div>
+      <div style="margin-top:12px;display:flex;gap:10px" id="importActions" hidden>
+        <button class="btn btn-primary" onclick="confirmImport()">确认导入</button>
+        <button class="btn btn-ghost" onclick="clearImport()">取消</button>
+      </div>
+    </div>
+
+    <div class="report-card">
+      <h3>📤 数据导出</h3>
+      <p style="font-size:13px;color:var(--text2);margin-bottom:12px">导出所有反馈数据为 JSON 文件，供自动化任务生成报告使用</p>
+      <div style="display:flex;gap:10px">
+        <button class="btn btn-primary" onclick="exportData()">📥 导出 JSON 数据</button>
+        <button class="btn btn-ghost" onclick="exportCSV()">📥 导出 CSV 数据</button>
+      </div>
+    </div>
+
+    <div class="report-card">
+      <h3>ℹ️ 导入格式说明</h3>
+      <div style="font-size:13px;color:var(--text2);line-height:1.8">
+        <p><strong style="color:var(--text)">TXT 格式：</strong>每行一条反馈，系统会自动识别分类和优先级</p>
+        <p style="margin-top:8px"><strong style="color:var(--text)">CSV 格式：</strong>表头包含 title,category,priority,description 字段</p>
+        <p style="margin-top:8px"><strong style="color:var(--text)">JSON 格式：</strong>数组对象，每个对象包含 title, category, priority, description 字段</p>
+        <p style="margin-top:8px"><strong style="color:var(--text)">关键词自动分类：</strong></p>
+        <ul style="padding-left:20px;margin-top:4px">
+          <li>功能缺陷(bug)：崩溃、闪退、报错、失败、异常、bug、无法、不能、打不开</li>
+          <li>体验问题(ux)：卡顿、慢、难用、复杂、界面、设计、字体、颜色、布局</li>
+          <li>需求建议(feature)：希望、建议、增加、添加、支持、功能、优化、改进</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- Add/Edit Modal -->
+<div class="modal-overlay" id="addModal">
+  <div class="modal">
+    <h2>📝 添加客诉反馈</h2>
+    <div class="form-group">
+      <label>标题 *</label>
+      <input type="text" id="formTitle" placeholder="简要描述问题">
+    </div>
+    <div class="form-group">
+      <label>详细描述</label>
+      <textarea id="formDesc" placeholder="请详细描述客户反馈的问题内容、场景和影响范围"></textarea>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>问题分类</label>
+        <select id="formCategory">
+          <option value="bug">功能缺陷</option>
+          <option value="ux">体验问题</option>
+          <option value="feature">需求建议</option>
+          <option value="other">其他</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>优先级</label>
+        <select id="formPriority">
+          <option value="P2">P2 - 一般</option>
+          <option value="P1">P1 - 较高</option>
+          <option value="P0">P0 - 紧急</option>
+          <option value="P3">P3 - 低</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>提交人</label>
+        <input type="text" id="formSubmitter" placeholder="客户/渠道来源">
+      </div>
+      <div class="form-group">
+        <label>来源渠道</label>
+        <select id="formSource">
+          <option value="app">App 内反馈</option>
+          <option value="wechat">微信客服</option>
+          <option value="email">邮件</option>
+          <option value="phone">电话</option>
+          <option value="other">其他</option>
+        </select>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeAddModal()">取消</button>
+      <button class="btn btn-primary" onclick="saveFeedback()">保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- Detail Modal -->
+<div class="modal-overlay" id="detailModal">
+  <div class="modal" id="detailContent"></div>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<script>
+// ==================== DATA ====================
+const STORAGE_KEY = 'feedback_kanban_data';
+let feedbacks = [];
+let pendingImport = [];
+let editingId = null;
+let draggedId = null;
+
+function loadData() {
+  try {
+    const d = localStorage.getItem(STORAGE_KEY);
+    feedbacks = d ? JSON.parse(d) : [];
+  } catch { feedbacks = []; }
+}
+function saveData() {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(feedbacks));
+}
+function genId() {
+  return 'FB-' + Date.now().toString(36).toUpperCase() + Math.random().toString(36).substr(2,3).toUpperCase();
+}
+
+// ==================== AUTO CLASSIFY ====================
+function autoClassify(text) {
+  const t = text.toLowerCase();
+  const bugWords = ['崩溃','闪退','报错','失败','异常','bug','无法','不能','打不开','错误','404','500','白屏','黑屏','卡死','无响应','丢失','消失','断了','断线','超时'];
+  const uxWords = ['卡顿','慢','难用','复杂','界面','设计','字体','颜色','布局','不好看','不美观','找不','看不清','太小','太大','拥挤','操作','体验','交互','流畅','加载'];
+  const featureWords = ['希望','建议','增加','添加','支持','功能','优化','改进','提升','能不能','能否','如果','需要','想要','要一个'];
+  const bugScore = bugWords.filter(w => t.includes(w)).length;
+  const uxScore = uxWords.filter(w => t.includes(w)).length;
+  const featureScore = featureWords.filter(w => t.includes(w)).length;
+  const max = Math.max(bugScore, uxScore, featureScore);
+  if (max === 0) return 'other';
+  if (bugScore === max) return 'bug';
+  if (uxScore === max) return 'ux';
+  return 'feature';
+}
+
+function autoPriority(text, category) {
+  const t = text.toLowerCase();
+  const criticalWords = ['崩溃','闪退','无法','不能','数据丢失','资金','支付','安全','全部','所有'];
+  const highWords = ['频繁','经常','大量','多人','影响','重要'];
+  if (criticalWords.some(w => t.includes(w)) || category === 'bug') {
+    if (criticalWords.some(w => t.includes(w))) return 'P0';
+  }
+  if (highWords.some(w => t.includes(w))) return 'P1';
+  return 'P2';
+}
+
+const categoryLabels = {bug:'功能缺陷',ux:'体验问题',feature:'需求建议',other:'其他'};
+const categoryTags = {bug:'tag-bug',ux:'tag-ux',feature:'tag-feature',other:'tag-other'};
+const statusLabels = {new:'新反馈',progress:'处理中',resolved:'已解决',closed:'已关闭'};
+const statusMap = {new:'新反馈',progress:'处理中',resolved:'已解决',closed:'已关闭'};
+const sourceLabels = {app:'App内反馈',wechat:'微信客服',email:'邮件',phone:'电话',other:'其他'};
+
+// ==================== KANBAN RENDER ====================
+function renderKanban() {
+  const search = document.getElementById('searchInput').value.toLowerCase();
+  const catFilter = document.getElementById('filterCategory').value;
+  const priFilter = document.getElementById('filterPriority').value;
+
+  let filtered = feedbacks.filter(f => {
+    if (search && !f.title.toLowerCase().includes(search) && !(f.description||'').toLowerCase().includes(search)) return false;
+    if (catFilter && f.category !== catFilter) return false;
+    if (priFilter && f.priority !== priFilter) return false;
+    return true;
+  });
+
+  const cols = {new:[],progress:[],resolved:[],closed:[]};
+  filtered.forEach(f => cols[f.status].push(f));
+
+  ['new','progress','resolved','closed'].forEach(status => {
+    const el = document.getElementById('col-' + status);
+    el.innerHTML = cols[status].map(f => `
+      <div class="card" draggable="true" ondragstart="dragCard(event,'${f.id}')" onclick="openDetail('${f.id}')">
+        <div class="card-id">${f.id}</div>
+        <div class="card-title">${escHtml(f.title)}</div>
+        <div class="card-meta">
+          <span class="tag ${categoryTags[f.category]}">${categoryLabels[f.category]}</span>
+          <span class="tag tag-${f.priority.toLowerCase()}">${f.priority}</span>
+          <span class="card-date">${f.createdAt}</span>
+        </div>
+      </div>
+    `).join('');
+    document.getElementById('count-' + status).textContent = cols[status].length;
+  });
+
+  // Stats
+  const today = new Date().toISOString().slice(0,10);
+  document.getElementById('statToday').textContent = feedbacks.filter(f => f.createdAt.startsWith(today)).length;
+  document.getElementById('statProgress').textContent = cols.progress.length;
+  document.getElementById('statResolved').textContent = cols.resolved.length;
+  document.getElementById('statTotal').textContent = feedbacks.length;
+}
+
+function escHtml(s) {
+  const d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML;
+}
+
+// ==================== DRAG & DROP ====================
+function dragCard(e, id) {
+  draggedId = id;
+  e.dataTransfer.effectAllowed = 'move';
+}
+function dropCard(e, status) {
+  e.preventDefault();
+  if (!draggedId) return;
+  const f = feedbacks.find(x => x.id === draggedId);
+  if (f) {
+    const oldStatus = f.status;
+    f.status = status;
+    f.updatedAt = new Date().toLocaleString('zh-CN');
+    if (status === 'resolved') f.resolvedAt = new Date().toISOString().slice(0,10);
+    saveData();
+    renderKanban();
+    showToast(`已将 ${f.id} 从「${statusLabels[oldStatus]}」移至「${statusLabels[status]}」`);
+  }
+  draggedId = null;
+}
+
+// ==================== MODAL ====================
+function openAddModal() {
+  editingId = null;
+  document.getElementById('formTitle').value = '';
+  document.getElementById('formDesc').value = '';
+  document.getElementById('formCategory').value = 'bug';
+  document.getElementById('formPriority').value = 'P2';
+  document.getElementById('formSubmitter').value = '';
+  document.getElementById('formSource').value = 'app';
+  document.querySelector('#addModal h2').textContent = '📝 添加客诉反馈';
+  document.getElementById('addModal').classList.add('show');
+}
+function closeAddModal() { document.getElementById('addModal').classList.remove('show'); }
+
+function saveFeedback() {
+  const title = document.getElementById('formTitle').value.trim();
+  if (!title) { showToast('请输入标题'); return; }
+  const desc = document.getElementById('formDesc').value.trim();
+  let category = document.getElementById('formCategory').value;
+  let priority = document.getElementById('formPriority').value;
+
+  if (editingId) {
+    const f = feedbacks.find(x => x.id === editingId);
+    if (f) {
+      f.title = title; f.description = desc; f.category = category;
+      f.priority = priority;
+      f.submitter = document.getElementById('formSubmitter').value.trim();
+      f.source = document.getElementById('formSource').value;
+      f.updatedAt = new Date().toLocaleString('zh-CN');
+    }
+    showToast('已更新反馈 ' + editingId);
+  } else {
+    const f = {
+      id: genId(),
+      title, description: desc, category, priority,
+      status: 'new',
+      submitter: document.getElementById('formSubmitter').value.trim(),
+      source: document.getElementById('formSource').value,
+      createdAt: new Date().toISOString().slice(0,10),
+      updatedAt: new Date().toLocaleString('zh-CN'),
+      resolvedAt: null
+    };
+    feedbacks.unshift(f);
+    showToast('已添加反馈 ' + f.id);
+  }
+  saveData();
+  renderKanban();
+  closeAddModal();
+}
+
+function openDetail(id) {
+  const f = feedbacks.find(x => x.id === id);
+  if (!f) return;
+  document.getElementById('detailContent').innerHTML = `
+    <h2>📋 ${escHtml(f.title)}</h2>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <span class="tag ${categoryTags[f.category]}">${categoryLabels[f.category]}</span>
+      <span class="tag tag-${f.priority.toLowerCase()}">${f.priority}</span>
+      <span class="tag" style="background:rgba(99,102,241,.15);color:#a5b4fc">${statusLabels[f.status]}</span>
+    </div>
+    <p style="margin-top:16px;font-size:14px;line-height:1.8;color:var(--text2)">${escHtml(f.description || '暂无详细描述')}</p>
+    <div class="detail-status">
+      <strong style="font-size:13px;line-height:28px">状态：</strong>
+      ${['new','progress','resolved','closed'].map(s => `
+        <button class="status-btn ${f.status===s?'active':''}" onclick="changeStatus('${id}','${s}')">${statusLabels[s]}</button>
+      `).join('')}
+    </div>
+    <div class="detail-info">
+      <div class="detail-info-item"><span>编号</span>${f.id}</div>
+      <div class="detail-info-item"><span>提交人</span>${escHtml(f.submitter||'未填写')}</div>
+      <div class="detail-info-item"><span>来源渠道</span>${sourceLabels[f.source]||f.source}</div>
+      <div class="detail-info-item"><span>优先级</span>${f.priority}</div>
+      <div class="detail-info-item"><span>创建时间</span>${f.createdAt}</div>
+      <div class="detail-info-item"><span>更新时间</span>${f.updatedAt}</div>
+      ${f.resolvedAt ? `<div class="detail-info-item"><span>解决时间</span>${f.resolvedAt}</div>` : ''}
+    </div>
+    <div style="margin-top:16px;display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn btn-primary" onclick="editFeedback('${id}')">✏️ 编辑</button>
+      <button class="btn btn-danger" onclick="deleteFeedback('${id}')">🗑️ 删除</button>
+      <button class="btn btn-ghost" onclick="closeDetail()">关闭</button>
+    </div>
+  `;
+  document.getElementById('detailModal').classList.add('show');
+}
+function closeDetail() { document.getElementById('detailModal').classList.remove('show'); }
+
+function changeStatus(id, status) {
+  const f = feedbacks.find(x => x.id === id);
+  if (f) {
+    f.status = status;
+    f.updatedAt = new Date().toLocaleString('zh-CN');
+    if (status === 'resolved') f.resolvedAt = new Date().toISOString().slice(0,10);
+    saveData();
+    openDetail(id);
+    renderKanban();
+  }
+}
+function editFeedback(id) {
+  const f = feedbacks.find(x => x.id === id);
+  if (!f) return;
+  editingId = id;
+  closeDetail();
+  document.getElementById('formTitle').value = f.title;
+  document.getElementById('formDesc').value = f.description || '';
+  document.getElementById('formCategory').value = f.category;
+  document.getElementById('formPriority').value = f.priority;
+  document.getElementById('formSubmitter').value = f.submitter || '';
+  document.getElementById('formSource').value = f.source || 'app';
+  document.querySelector('#addModal h2').textContent = '✏️ 编辑反馈 ' + f.id;
+  document.getElementById('addModal').classList.add('show');
+}
+function deleteFeedback(id) {
+  if (!confirm('确定要删除反馈 ' + id + ' 吗？此操作不可恢复。')) return;
+  feedbacks = feedbacks.filter(x => x.id !== id);
+  saveData();
+  renderKanban();
+  closeDetail();
+  showToast('已删除反馈 ' + id);
+}
+
+// ==================== TABS ====================
+function switchTab(tab) {
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('tab-' + tab).classList.add('active');
+  event.target.classList.add('active');
+  if (tab === 'report') updateCharts();
+}
+
+// ==================== CHARTS ====================
+let chartInstances = {};
+function updateCharts() {
+  // Category chart
+  const catCounts = {bug:0,ux:0,feature:0,other:0};
+  feedbacks.forEach(f => catCounts[f.category]++);
+  renderPieChart('chartCategory', ['功能缺陷','体验问题','需求建议','其他'], [catCounts.bug,catCounts.ux,catCounts.feature,catCounts.other], ['#ef4444','#eab308','#6366f1','#6b7280']);
+
+  // Priority chart
+  const priCounts = {P0:0,P1:0,P2:0,P3:0};
+  feedbacks.forEach(f => priCounts[f.priority]++);
+  renderPieChart('chartPriority', ['P0 紧急','P1 较高','P2 一般','P3 低'], [priCounts.P0,priCounts.P1,priCounts.P2,priCounts.P3], ['#ef4444','#f97316','#eab308','#22c55e']);
+
+  // Status chart
+  const staCounts = {new:0,progress:0,resolved:0,closed:0};
+  feedbacks.forEach(f => staCounts[f.status]++);
+  renderBarChart('chartStatus', ['新反馈','处理中','已解决','已关闭'], [staCounts.new,staCounts.progress,staCounts.resolved,staCounts.closed], ['#3b82f6','#f97316','#22c55e','#6b7280']);
+
+  // Trend chart
+  renderTrendChart();
+}
+
+function renderPieChart(id, labels, data, colors) {
+  if (chartInstances[id]) chartInstances[id].destroy();
+  chartInstances[id] = new Chart(document.getElementById(id), {
+    type: 'doughnut',
+    data: { labels, datasets: [{ data, backgroundColor: colors, borderWidth: 0 }] },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { position: 'bottom', labels: { color: '#8b8fa3', font: { size: 12 }, padding: 12 } }
+      },
+      cutout: '60%'
+    }
+  });
+}
+
+function renderBarChart(id, labels, data, colors) {
+  if (chartInstances[id]) chartInstances[id].destroy();
+  chartInstances[id] = new Chart(document.getElementById(id), {
+    type: 'bar',
+    data: { labels, datasets: [{ data, backgroundColor: colors, borderRadius: 6, borderSkipped: false }] },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { grid: { display: false }, ticks: { color: '#8b8fa3' } },
+        y: { grid: { color: 'rgba(46,51,69,.5)' }, ticks: { color: '#8b8fa3', stepSize: 1 }, beginAtZero: true }
+      }
+    }
+  });
+}
+
+function renderTrendChart() {
+  const days = {};
+  feedbacks.forEach(f => {
+    const d = f.createdAt;
+    days[d] = (days[d]||0) + 1;
+  });
+  const sorted = Object.entries(days).sort((a,b) => a[0].localeCompare(b[0])).slice(-14);
+  const labels = sorted.map(x => x[0].slice(5));
+  const data = sorted.map(x => x[1]);
+
+  if (chartInstances['chartTrend']) chartInstances['chartTrend'].destroy();
+  chartInstances['chartTrend'] = new Chart(document.getElementById('chartTrend'), {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [{
+        data, borderColor: '#6366f1', backgroundColor: 'rgba(99,102,241,.1)',
+        fill: true, tension: .4, pointRadius: 4, pointBackgroundColor: '#6366f1'
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { grid: { display: false }, ticks: { color: '#8b8fa3' } },
+        y: { grid: { color: 'rgba(46,51,69,.5)' }, ticks: { color: '#8b8fa3', stepSize: 1 }, beginAtZero: true }
+      }
+    }
+  });
+}
+
+// ==================== REPORT GENERATION ====================
+function generateReport() {
+  const type = document.getElementById('reportType').value;
+  const dateStr = document.getElementById('reportDate').value;
+  let items = [];
+
+  if (type === 'daily') {
+    const targetDate = dateStr || new Date().toISOString().slice(0,10);
+    items = feedbacks.filter(f => f.createdAt === targetDate);
+  } else {
+    const targetDate = dateStr ? new Date(dateStr) : new Date();
+    const weekStart = new Date(targetDate);
+    weekStart.setDate(weekStart.getDate() - weekStart.getDay() + 1);
+    weekStart.setHours(0,0,0,0);
+    const weekEnd = new Date(weekStart);
+    weekEnd.setDate(weekEnd.getDate() + 7);
+    items = feedbacks.filter(f => {
+      const d = new Date(f.createdAt);
+      return d >= weekStart && d < weekEnd;
+    });
+  }
+
+  const catCounts = {bug:0,ux:0,feature:0,other:0};
+  const priCounts = {P0:0,P1:0,P2:0,P3:0};
+  const staCounts = {new:0,progress:0,resolved:0,closed:0};
+  items.forEach(f => { catCounts[f.category]++; priCounts[f.priority]++; staCounts[f.status]++; });
+
+  const label = type === 'daily' ? '日报' : '周报';
+  const period = type === 'daily'
+    ? (dateStr || new Date().toISOString().slice(0,10))
+    : `${items.length ? items[items.length-1].createdAt : dateStr} ~ ${items.length ? items[0].createdAt : dateStr}`;
+
+  let report = `╔══════════════════════════════════════╗\n`;
+  report += `║     客户反馈${label}        ║\n`;
+  report += `╚══════════════════════════════════════╝\n\n`;
+  report += `📅 统计周期：${period}\n`;
+  report += `📊 反馈总数：${items.length} 条\n`;
+  report += `🕐 生成时间：${new Date().toLocaleString('zh-CN')}\n\n`;
+
+  report += `──── 一、数据概览 ────\n\n`;
+  report += `【问题分类】\n`;
+  report += `  🔴 功能缺陷：${catCounts.bug} 条\n`;
+  report += `  🟡 体验问题：${catCounts.ux} 条\n`;
+  report += `  🔵 需求建议：${catCounts.feature} 条\n`;
+  report += `  ⚪ 其他问题：${catCounts.other} 条\n\n`;
+  report += `【优先级分布】\n`;
+  report += `  P0 紧急：${priCounts.P0} 条 | P1 较高：${priCounts.P1} 条 | P2 一般：${priCounts.P2} 条 | P3 低：${priCounts.P3} 条\n\n`;
+  report += `【状态分布】\n`;
+  report += `  新反馈：${staCounts.new} | 处理中：${staCounts.progress} | 已解决：${staCounts.resolved} | 已关闭：${staCounts.closed}\n\n`;
+
+  // Critical issues
+  const criticals = items.filter(f => f.priority === 'P0');
+  if (criticals.length) {
+    report += `──── 二、紧急问题（P0） ────\n\n`;
+    criticals.forEach((f,i) => {
+      report += `${i+1}. [${f.id}] ${f.title}\n`;
+      report += `   分类：${categoryLabels[f.category]} | 状态：${statusLabels[f.status]} | 来源：${sourceLabels[f.source]||f.source}\n`;
+      if (f.description) report += `   描述：${f.description.slice(0,100)}${f.description.length>100?'...':''}\n`;
+      report += '\n';
+    });
+  }
+
+  // All items list
+  report += `──── 三、反馈明细 ────\n\n`;
+  if (items.length === 0) {
+    report += `暂无反馈数据。\n`;
+  } else {
+    items.forEach((f,i) => {
+      report += `${i+1}. [${f.id}] ${f.title}\n`;
+      report += `   分类：${categoryLabels[f.category]} | 优先级：${f.priority} | 状态：${statusLabels[f.status]}\n`;
+      if (f.submitter) report += `   提交人：${f.submitter}\n`;
+      report += '\n';
+    });
+  }
+
+  // Analysis
+  if (items.length > 0) {
+    report += `──── 四、分析建议 ────\n\n`;
+    const total = items.length;
+    if (catCounts.bug / total > 0.4) {
+      report += `⚠️ 功能缺陷占比较高（${(catCounts.bug/total*100).toFixed(0)}%），建议重点排查产品质量和测试覆盖率。\n\n`;
+    }
+    if (priCounts.P0 + priCounts.P1 > total * 0.3) {
+      report += `⚠️ 高优先级问题占比 ${(((priCounts.P0+priCounts.P1)/total)*100).toFixed(0)}%，建议紧急安排资源处理。\n\n`;
+    }
+    if (staCounts.new > staCounts.resolved) {
+      report += `📊 新增反馈多于已解决数量，处理进度需加快。当前解决率：${(staCounts.resolved/total*100).toFixed(0)}%\n\n`;
+    } else {
+      report += `✅ 处理进度良好，解决率 ${(staCounts.resolved/total*100).toFixed(0)}%。\n\n`;
+    }
+  }
+
+  document.getElementById('reportOutput').textContent = report;
+}
+
+function copyReport() {
+  const text = document.getElementById('reportOutput').textContent;
+  navigator.clipboard.writeText(text).then(() => showToast('报告已复制到剪贴板'));
+}
+
+// ==================== FILE IMPORT ====================
+function handleDrop(e) {
+  e.preventDefault();
+  const file = e.dataTransfer.files[0];
+  if (file) processFile(file);
+}
+function handleFileSelect(e) {
+  const file = e.target.files[0];
+  if (file) processFile(file);
+}
+
+function processFile(file) {
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    const content = e.target.result;
+    let parsed = [];
+
+    if (file.name.endsWith('.json')) {
+      try {
+        const json = JSON.parse(content);
+        const arr = Array.isArray(json) ? json : [json];
+        parsed = arr.map(item => ({
+          title: item.title || item.name || '未命名反馈',
+          description: item.description || item.content || item.desc || '',
+          category: item.category || autoClassify((item.title||'') + ' ' + (item.description||'')),
+          priority: item.priority || autoPriority((item.title||'') + ' ' + (item.description||''), item.category),
+          submitter: item.submitter || item.author || '',
+          source: item.source || 'other'
+        }));
+      } catch { showToast('JSON 解析失败，请检查格式'); return; }
+    } else if (file.name.endsWith('.csv')) {
+      const lines = content.split('\n').filter(l => l.trim());
+      if (lines.length < 2) { showToast('CSV 文件为空'); return; }
+      const headers = lines[0].split(',').map(h => h.trim().toLowerCase());
+      const ti = headers.findIndex(h => ['title','name','问题','标题','反馈标题'].includes(h));
+      const ci = headers.findIndex(h => ['category','分类','类型'].includes(h));
+      const pi = headers.findIndex(h => ['priority','优先级','等级'].includes(h));
+      const di = headers.findIndex(h => ['description','desc','描述','内容','详情'].includes(h));
+      const si = headers.findIndex(h => ['submitter','author','提交人','来源'].includes(h));
+
+      for (let i = 1; i < lines.length; i++) {
+        const cols = lines[i].split(',').map(c => c.trim());
+        if (!cols[ti >= 0 ? ti : 0]) continue;
+        const title = cols[ti >= 0 ? ti : 0] || '';
+        const desc = di >= 0 ? cols[di] : '';
+        parsed.push({
+          title,
+          description: desc,
+          category: ci >= 0 && cols[ci] ? mapCategory(cols[ci]) : autoClassify(title + ' ' + desc),
+          priority: pi >= 0 && cols[pi] ? cols[pi].toUpperCase() : autoPriority(title + ' ' + desc, ''),
+          submitter: si >= 0 ? cols[si] : '',
+          source: 'other'
+        });
+      }
+    } else {
+      // TXT - 每行一条
+      const lines = content.split('\n').filter(l => l.trim());
+      lines.forEach(line => {
+        if (line.trim()) {
+          parsed.push({
+            title: line.trim().slice(0, 80),
+            description: line.trim(),
+            category: autoClassify(line),
+            priority: autoPriority(line, ''),
+            submitter: '',
+            source: 'other'
+          });
+        }
+      });
+    }
+
+    if (parsed.length === 0) { showToast('未能解析出有效反馈'); return; }
+    pendingImport = parsed;
+    const preview = document.getElementById('uploadPreview');
+    preview.style.display = 'block';
+    preview.innerHTML = `<div style="font-weight:600;margin-bottom:8px;color:var(--text)">已解析 ${parsed.length} 条反馈</div>` +
+      parsed.map((p,i) => `<div style="padding:6px 0;border-bottom:1px solid var(--border);display:flex;gap:8px;align-items:center">
+        <span style="color:var(--text2);font-size:11px;min-width:30px">#${i+1}</span>
+        <span style="flex:1">${escHtml(p.title.slice(0,60))}</span>
+        <span class="tag ${categoryTags[p.category]}">${categoryLabels[p.category]}</span>
+        <span class="tag tag-${p.priority.toLowerCase()}">${p.priority}</span>
+      </div>`).join('');
+    document.getElementById('importActions').hidden = false;
+  };
+  reader.readAsText(file);
+}
+
+function mapCategory(val) {
+  const v = val.toLowerCase();
+  if (v.includes('bug') || v.includes('缺陷') || v.includes('错误')) return 'bug';
+  if (v.includes('ux') || v.includes('体验') || v.includes('设计')) return 'ux';
+  if (v.includes('feature') || v.includes('需求') || v.includes('建议')) return 'feature';
+  return 'other';
+}
+
+function confirmImport() {
+  if (!pendingImport.length) return;
+  pendingImport.forEach(p => {
+    feedbacks.unshift({
+      id: genId(), ...p,
+      status: 'new',
+      createdAt: new Date().toISOString().slice(0,10),
+      updatedAt: new Date().toLocaleString('zh-CN'),
+      resolvedAt: null
+    });
+  });
+  saveData();
+  renderKanban();
+  showToast(`成功导入 ${pendingImport.length} 条反馈`);
+  clearImport();
+}
+
+function clearImport() {
+  pendingImport = [];
+  document.getElementById('uploadPreview').style.display = 'none';
+  document.getElementById('importActions').hidden = true;
+  document.getElementById('fileInput').value = '';
+}
+
+// ==================== EXPORT ====================
+function exportData() {
+  const blob = new Blob([JSON.stringify(feedbacks, null, 2)], {type:'application/json'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'feedback-data.json';
+  a.click();
+  showToast('已导出 ' + feedbacks.length + ' 条反馈数据');
+}
+function exportCSV() {
+  let csv = 'ID,标题,描述,分类,优先级,状态,提交人,来源,创建时间,更新时间\n';
+  feedbacks.forEach(f => {
+    csv += `${f.id},"${f.title.replace(/"/g,'""')}","${(f.description||'').replace(/"/g,'""')}",${categoryLabels[f.category]},${f.priority},${statusLabels[f.status]},${f.submitter||''},${sourceLabels[f.source]||f.source},${f.createdAt},${f.updatedAt}\n`;
+  });
+  const blob = new Blob(['\uFEFF'+csv], {type:'text/csv;charset=utf-8'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'feedback-data.csv';
+  a.click();
+  showToast('已导出 CSV 文件');
+}
+
+// ==================== TOAST ====================
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2500);
+}
+
+// ==================== INIT ====================
+loadData();
+renderKanban();
+document.getElementById('reportDate').value = new Date().toISOString().slice(0,10);
+
+// Close modals on overlay click
+document.getElementById('addModal').addEventListener('click', e => { if (e.target === e.currentTarget) closeAddModal(); });
+document.getElementById('detailModal').addEventListener('click', e => { if (e.target === e.currentTarget) closeDetail(); });
+</script>
+</body>
+</html>
